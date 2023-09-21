@@ -1,15 +1,13 @@
 {-# LANGUAGE DuplicateRecordFields #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# HLINT ignore "Unused LANGUAGE pragma" #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
 
 module AST where
-
-import GHC.Records
 
 data AST = File {name :: String, expression :: Term, location :: Location} deriving (Show)
 
@@ -39,6 +37,22 @@ data BinaryOP = Add | Sub | Mul | Div | Rem | Eq | Neq | Lt | Gt | Lte | Gte | A
 
 data Binary = Binary' {kind :: String, lhs :: Term, op :: BinaryOP, rhs :: Term, location :: Location} deriving (Show)
 
+  -- TStr :: TStr -> Term TStr
+  -- TInt :: TInt -> Term TInt
+  -- TBool :: TBool -> Term TBool
+  -- Print :: Print -> Term Print
+  -- TVar :: TVar -> Term TVar
+  -- Function :: Function -> Term Function
+  -- Parameter :: Parameter -> Term Parameter
+  -- Call :: Call -> Term Call
+  -- Let :: Let -> Term Let
+  -- TTuple :: TTuple -> Term TTuple
+  -- If :: If -> Term If
+  -- Binary :: Binary -> Term Binary
+  -- First :: First -> Term First
+  -- Second :: Second -> Term Second
+
+
 data Term
   = TStr TStr
   | TInt TInt
@@ -56,7 +70,7 @@ data Term
   | Second Second
   deriving (Show)
 
-data First = First' {kind :: String, value :: Term, location :: Location} deriving (Show)
+data First = First'{kind :: String, value :: Term, location :: Location} deriving (Show)
 
 data Second = Second' {kind :: String, value :: Term, location :: Location} deriving (Show)
 
