@@ -185,11 +185,10 @@ asTerm = do
 parseToAST :: String -> Either (ParseError String) AST
 parseToAST str = parse asAST (BL.pack str)
 
-type StateB = (Map String BaseType, Map String String)
+type StateB = (Map String BaseType)
 
 evalAST :: AST -> StateT StateB IO BaseType
-evalAST (File {name = name, expression = expression, location = location}) = do
-  liftIO $ putStrLn ("Running " ++ show expression)
+evalAST (File {name = name, expression = expression }) = do
   state <- get
   liftIO $ putStrLn ("Running " ++ name)
   lift $ evalStateT (evalTerm expression) state
@@ -210,83 +209,104 @@ data BaseType =
   VInt Int
   | VStr String
   | VBool Bool
-  | VVoid
-  | FunctionValue (BaseType -> IO ())
+  | VFunction ([String], Term)
+  | End
+  deriving (Show)
 
+getParameters :: [Parameter] -> [String]
+getParameters [] = []
+getParameters (Parameter' {text = text} :xs) = text : getParameters xs
 
 evalTerm :: Term -> StateT StateB IO BaseType
-evalTerm (Let (Let'  { name = Parameter' {text = name}, value = value, next = next })) = do
-  (s1, s2) <- get
-  value' <- lift $ (evalStateT $ evalTerm value) (s1, s2)
-  let s1' = Map.insert name value' s1
-  modify (const (s1', s2))
-  _next' <- lift $ (evalStateT $ evalTerm next) (s1', s2)
-  return VNone
-
 evalTerm (TInt s) = return (evalInt s)
 evalTerm (TBool s) = return (evalBool s)
 evalTerm (TStr s) = return (evalStr s)
+
+evalTerm (Print s) = do
+  _ <- evalPrint s
+  return End
+
+evalTerm (Let (Let' { name = Parameter' {text = name}, value = value, next = next })) = do
+  state <- get
+  value' <- lift $ (evalStateT $ evalTerm value) state
+  let state' = Map.insert name value' state
+  modify (const state')
+  _next' <- lift $ (evalStateT $ evalTerm next) state'
+  return End
+
 evalTerm (Binary (Binary' { lhs = lhs, op = op, rhs = rhs })) = do
   l <- evalTerm lhs
   r <- evalTerm rhs
-  case (l, r) of
-    (VInt a, VInt b) -> return $ evalBinary op a b
-    -- (VBool a, VBool b) -> return $ VBool $ evalBinary op a b
-    _ -> return VNone
--- evalTerm (TVar s) = return $ VVar evalVar s
-evalTerm (Print s) = do
-  _ <- evalPrint s
-  return VNone
+  return $ evalBinary op l r
+
+evalTerm (TVar s) = do
+  state <- get
+  let s' = evalVar s
+  let vall = Map.lookup s' state
+  case vall of
+    Just value -> return value
+    Nothing -> error ("Var `" ++ s' ++ "` not defined" )
+
+evalTerm (Function (Function' { value = value, parameters = parameters })) = do return $ VFunction (getParameters parameters, value)
+
+evalTerm (Call (Call' {callee = TVar callee, arguments = arguments})) = do
+  state <- get
+  let s' = evalVar callee
+  let vall = Map.lookup s' state
+  case vall of
+    Just (VFunction (parameters, value)) -> do
+      let l = zip parameters (map evalTerm arguments)
+      l' <- mapM (\(k, v) -> do { v' <- v; return (k, v') }) l
+      let state' = Map.fromList l' `Map.union`  state
+      lift $ evalStateT (evalTerm value) state'
+    _ -> error ("Var `" ++ s' ++ "` not defined")
+
+evalTerm (If (If' {condition = condition, then' = then', else' = else'})) = do
+  condition' <- evalTerm condition
+  case condition' of
+    VBool True -> evalTerm then'
+    VBool False -> evalTerm else'
+    _ -> error ("Invalid condition: `" ++ show condition' ++ "`")
+
 evalTerm x = do
-  (s1, s2) <- get
-  lift $ error ("Not implemented" ++ show (getLocation x))
+  lift $ error ("Not implemented term: " ++ show x)
 
-
-evalBinary :: BinaryOP -> Int -> Int -> BaseType
-evalBinary Add a b = VInt (a + b)
-evalBinary Sub a b = VInt (a - b)
-evalBinary Mul a b = VInt (a * b)
--- evalBinary Div a b = a `div` b
--- evalBinary Rem a b = a `rem` b
--- evalBinary Lt a b = a < b
--- evalBinary Gt a b = a > b
--- evalBinary Lte a b = a <= b
--- evalBinary Gte a b = a >= b
--- evalBinary And a b = a && b
--- evalBinary Or a b = a || b
-evalBinary _ _ _ = error "Not implemented binary"
-
-
+evalBinary :: BinaryOP -> BaseType -> BaseType -> BaseType
+evalBinary Add (VInt a) (VInt b) = VInt (a + b)
+evalBinary Sub (VInt a) (VInt b) = VInt (a - b)
+evalBinary Mul (VInt a) (VInt b) = VInt (a * b)
+evalBinary Div (VInt a) (VInt b) = VInt (a `div` b)
+evalBinary Rem (VInt a) (VInt b) = VInt (a `mod` b)
+evalBinary Lt (VInt a) (VInt b) = VBool (a < b)
+evalBinary Gt (VInt a) (VInt b) = VBool (a > b)
+evalBinary Lte (VInt a) (VInt b) = VBool (a <= b)
+evalBinary Gte (VInt a) (VInt b) = VBool (a >= b)
+evalBinary Eq (VInt a) (VInt b) = VBool (a == b)
+evalBinary Neq (VInt a) (VInt b) = VBool (a /= b)
+evalBinary op _ _ = error ("Not implemented binary " ++ show op)
 
 evalPrint :: Print -> StateT StateB IO ()
-evalPrint Print' {value = value} = do
-  (s1,s2) <- get
-  lift $
-    case value of
-      TStr s -> printBasicTypes (evalStr s)
-      TInt s -> printBasicTypes (evalInt s)
-      TBool s -> printBasicTypes (evalBool s)
-
-      -- (Binary (Binary' { lhs = lhs, op = op, rhs = rhs })) -> do
-      --   l <- evalTerm lhs
-      --   r <- evalTerm rhs
-      --   return print $ (evalBinary op l r)
-
-      -- (VInt a, VInt b) -> return $ evalBinary op a b
-      TVar (Var' { text = text }) -> do
-        let vall = Map.lookup text s1
-        case vall of
-          Nothing -> print ("Not defined var:: " ++ text)
-          Just value -> printBasicTypes value
-      _ -> print ("Not implemented " ++ show (getLocation value))
+evalPrint Print' { value = value } = do
+  state <- get
+  r <- case value of
+    TStr s -> return $ evalStr s
+    TInt s -> return $ evalInt s
+    TBool s -> return $ evalBool s
+    TVar (Var' { text = text }) -> do
+      let vall = Map.lookup text state
+      case vall of
+        Nothing -> error ("Var `" ++ text ++ "` not defined" )
+        Just value -> return value
+    v -> evalTerm v
+  lift $ printBasicTypes r
 
 
 printBasicTypes :: BaseType -> IO ()
 printBasicTypes (VInt s) = print s
 printBasicTypes (VBool s) = print s
 printBasicTypes (VStr s) = print s
-printBasicTypes (VNone) = print "None"
-printBasicTypes (VVoid) = print "Void"
+printBasicTypes End = return ()
+printBasicTypes _ = print "<Function>"
 
 getLocation :: Term -> Location
 getLocation (TStr (Str' {location = location})) = location
@@ -306,6 +326,6 @@ getLocation (Second (Second' {location = location})) = location
 
 execute :: Either (ParseError String) AST -> IO ()
 execute (Right s) = do
-  _ <- evalStateT (evalAST s) (Map.empty, Map.empty)
+  _ <- evalStateT (evalAST s) Map.empty
   return ()
 execute (Left err) = print (show err)

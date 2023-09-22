@@ -6,10 +6,6 @@ import qualified Lib
 import System.Environment
 import System.IO
 
-execute :: Either (ParseError String) AST -> IO ()
-execute (Right s) = print (show s)
-execute (Left err) = print (show err)
-
 main :: IO ()
 main = do
   file1 <- getArgs
