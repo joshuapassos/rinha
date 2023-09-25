@@ -117,6 +117,9 @@ evalTerm x = do
 
 evalBinary :: BinaryOP -> BaseType -> BaseType -> BaseType
 evalBinary Add (VInt a) (VInt b) = VInt (a + b)
+evalBinary Add (VStr a) (VStr b) = VStr (a <> b)
+evalBinary Add (VInt a) (VStr b) = VStr (show a <> b)
+evalBinary Add (VStr a) (VInt b) = VStr (a <> show b)
 evalBinary Sub (VInt a) (VInt b) = VInt (a - b)
 evalBinary Mul (VInt a) (VInt b) = VInt (a * b)
 evalBinary Div (VInt a) (VInt b) = VInt (a `div` b)
@@ -126,7 +129,10 @@ evalBinary Gt (VInt a) (VInt b) = VBool (a > b)
 evalBinary Lte (VInt a) (VInt b) = VBool (a <= b)
 evalBinary Gte (VInt a) (VInt b) = VBool (a >= b)
 evalBinary Eq (VInt a) (VInt b) = VBool (a == b)
+evalBinary Eq (VStr a) (VStr b) = VBool (a == b)
 evalBinary Neq (VInt a) (VInt b) = VBool (a /= b)
+evalBinary And (VBool a) (VBool b) = VBool (a && b)
+evalBinary Or (VBool a) (VBool b) = VBool (a || b)
 evalBinary op _ _ = error ("Not implemented binary " <> show op)
 
 evalPrint :: Print -> StateT StateB IO BaseType
