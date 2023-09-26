@@ -62,7 +62,9 @@ evalTerm (Print s) = evalPrint s
 evalTerm (Let (Let' {name = Parameter' {text = name}, value = value, next = next})) = do
   state <- get
   value' <- lift $ (evalStateT $ evalTerm value) state
-  let state' = Map.insert name value' state
+  let state' = case Map.lookup name state of
+        Just _ -> state
+        Nothing -> Map.insert name value' state
   modify (const state')
   lift $ (evalStateT $ evalTerm next) state'
 evalTerm (Binary (Binary' {lhs = lhs, op = op, rhs = rhs})) = do
@@ -87,7 +89,7 @@ evalTerm (Call (Call' {callee = TVar callee, arguments = arguments})) = do
   let vall = Map.lookup s' state
   case vall of
     Just (VFunction (parameters, value)) -> do
-      let l = [(i,evalTerm j) | i <- parameters, j <- arguments]
+      let l = [(i, evalTerm j) | i <- parameters, j <- arguments]
       l' <- traverse sequence l
       let state' = Map.fromList l' `Map.union` state
       lift $ evalStateT (evalTerm value) state'
@@ -101,12 +103,12 @@ evalTerm (If (If' {condition = condition, then' = then', else' = else'})) = do
 evalTerm (First (First' {value = value})) = do
   value' <- evalTerm value
   case value' of
-    VTuple (a,_) -> return a
+    VTuple (a, _) -> return a
     _ -> error ("Invalid first: `" <> show value' <> "`")
 evalTerm (Second (Second' {value = value})) = do
   value' <- evalTerm value
   case value' of
-    VTuple (_,b) -> return b
+    VTuple (_, b) -> return b
     _ -> error ("Invalid second: `" <> show value' <> "`")
 evalTerm (TTuple (Tuple' {first = first, second = second})) = do
   first' <- evalTerm first
